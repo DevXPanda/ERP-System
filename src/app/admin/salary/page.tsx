@@ -20,6 +20,7 @@ import {
   IndianRupee,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { PayslipModal } from "@/components/employee/payslip-modal";
 
 interface SalaryFormState {
   monthlyCTC: string;
@@ -77,6 +78,16 @@ export default function SalaryManagementPage() {
     api.salary.getSalaryByEmployee,
     selectedEmployeeId ? { employeeId: selectedEmployeeId } : "skip"
   );
+
+  const selectedEmp = summaries?.find((s) => s.employeeId === selectedEmployeeId);
+  const selectedUserId = selectedEmp?.userId;
+
+  const selectedUserPayroll = useQuery(
+    api.employee.getPayrollRecords,
+    selectedUserId ? { userId: selectedUserId } : "skip"
+  );
+
+  const [selectedPayrollId, setSelectedPayrollId] = useState<string | null>(null);
 
   // Auto-populate form when existing salary is loaded
   useEffect(() => {
@@ -508,10 +519,84 @@ export default function SalaryManagementPage() {
                   </button>
                 </div>
               </form>
+
+              {/* Generated Payslips History */}
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xs space-y-4 mt-5">
+                <div className="flex items-center gap-2">
+                  <Wallet className="h-4.5 w-4.5 text-indigo-500" />
+                  <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wide">
+                    Generated Payslips History
+                  </h3>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 dark:bg-slate-950 text-slate-400 uppercase tracking-widest text-[9px] border-b border-slate-150 dark:border-slate-800 font-bold">
+                        <th className="px-4 py-2.5 rounded-l-lg">Billing Month</th>
+                        <th className="px-4 py-2.5">Gross Pay</th>
+                        <th className="px-4 py-2.5">Net Disbursed</th>
+                        <th className="px-4 py-2.5">Status</th>
+                        <th className="px-4 py-2.5 rounded-r-lg text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-850">
+                      {selectedUserPayroll === undefined ? (
+                        <tr>
+                          <td colSpan={5} className="px-4 py-6 text-center text-slate-400">
+                            <Loader2 className="h-4 w-4 animate-spin inline mr-1 text-indigo-500" />
+                            Loading payslip records…
+                          </td>
+                        </tr>
+                      ) : !selectedUserPayroll || selectedUserPayroll.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="px-4 py-6 text-center text-slate-400">
+                            No payroll slips recorded for this employee.
+                          </td>
+                        </tr>
+                      ) : (
+                        selectedUserPayroll.map((p) => {
+                          const grossPay = p.baseSalary + p.allowances;
+                          return (
+                            <tr key={p._id} className="hover:bg-slate-50 dark:hover:bg-slate-850/30 transition-colors">
+                              <td className="px-4 py-3 font-semibold text-slate-800 dark:text-slate-200">{p.month}</td>
+                              <td className="px-4 py-3 font-mono">₹{grossPay.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                              <td className="px-4 py-3 font-mono font-bold text-slate-900 dark:text-slate-100">
+                                ₹{p.netSalary.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40">
+                                  {p.status}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedPayrollId(p._id)}
+                                  className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-650 dark:bg-indigo-950/40 dark:text-indigo-400 rounded-lg text-[10px] font-bold transition-colors cursor-pointer"
+                                >
+                                  View Slip
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </>
           )}
         </div>
       </div>
+
+      {selectedPayrollId && (
+        <PayslipModal
+          payrollId={selectedPayrollId}
+          onClose={() => setSelectedPayrollId(null)}
+        />
+      )}
     </motion.div>
   );
 }

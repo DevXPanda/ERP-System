@@ -81,7 +81,7 @@ export default function LoginPage() {
           <div className="h-12 w-12 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 mb-3 border border-indigo-100">
             <Shield className="h-6 w-6 stroke-[1.5]" />
           </div>
-          <h1 className="text-xl font-medium text-slate-800 tracking-tight">Nexora ERP Portal</h1>
+          <h1 className="text-xl font-medium text-slate-800 tracking-tight">Bizwoke ERP Portal</h1>
           <p className="text-sm text-slate-500 mt-1">Unified login for Enterprise Management</p>
         </div>
 

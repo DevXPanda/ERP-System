@@ -1,17 +1,11 @@
 "use client";
 
 import React from "react";
-import { NKTechLogo, BizwokeNovaLogo } from "./logos";
 import { Mail } from "lucide-react";
 
-const NexoraLogo = () => (
+const BizwokeLogo = () => (
   <div className="flex items-center gap-2">
-    <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-black text-lg tracking-wider select-none shadow-sm shadow-blue-500/20">
-      N
-    </div>
-    <span className="font-bold text-slate-900 dark:text-white text-lg tracking-tight">
-      Nexora ERP
-    </span>
+    <img src="/Bizwoke.jpg" alt="Bizwoke Logo" className="h-8 object-contain rounded-lg" />
   </div>
 );
 
@@ -44,63 +38,44 @@ export default function Footer() {
     { icon: <LinkedinIcon />, href: "https://linkedin.com", name: "LinkedIn" },
     { icon: <GithubIcon />, href: "https://github.com", name: "GitHub" },
     { icon: <TwitterIcon />, href: "https://twitter.com", name: "Twitter" },
-    { icon: <Mail className="h-4 w-4" />, href: "mailto:support@nexora.io", name: "Email" },
+    { icon: <Mail className="h-4 w-4" />, href: "mailto:support@bizwoke.com", name: "Email" },
   ];
 
   return (
     <footer className="relative bg-white dark:bg-[#030712] border-t border-slate-200 dark:border-white/5 pt-20 pb-12 overflow-hidden text-left">
       <div className="relative z-10 max-w-7xl mx-auto px-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-12 pb-16 border-b border-slate-200 dark:border-white/5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 pb-16 border-b border-slate-200 dark:border-white/5">
           {/* Logo and Brand description */}
           <div className="space-y-4">
-            <NexoraLogo />
+            <BizwokeLogo />
             <p className="text-xs font-medium text-slate-500 leading-relaxed max-w-sm">
               The unified workforce, payroll, and security infrastructure platform designed for fast-growing global enterprises.
             </p>
           </div>
 
           {/* Quick links */}
-          <div className="flex flex-col space-y-4 md:items-center">
-            <div className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">
+          <div className="flex flex-col space-y-4 md:items-end">
+            <div className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider md:text-right">
               Quick Resources
             </div>
-            <div className="flex flex-col space-y-2 md:items-center">
+            <div className="flex flex-col space-y-2 md:items-end">
               {quickLinks.map((link) => (
                 <a
                   key={link.name}
                   href={link.href}
-                  className="text-xs font-semibold text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors duration-200"
+                  className="text-xs font-semibold text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors duration-200 md:text-right"
                 >
                   {link.name}
                 </a>
               ))}
             </div>
           </div>
-
-          {/* Technology partner logo display */}
-          <div className="space-y-6 flex flex-col md:items-end">
-            <div className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider md:text-right">
-              Technology Alliance
-            </div>
-            <div className="flex items-center gap-6 pt-1">
-              <div className="flex flex-col items-center">
-                <NKTechLogo className="h-7 w-auto opacity-70 hover:opacity-100 transition-opacity invert dark:invert-0" />
-              </div>
-              <div className="w-px h-8 bg-slate-200 dark:bg-white/10"></div>
-              <div className="flex flex-col items-center">
-                <BizwokeNovaLogo className="h-7 w-auto opacity-70 hover:opacity-100 transition-opacity invert dark:invert-0" />
-              </div>
-            </div>
-            <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500 md:text-right leading-relaxed max-w-xs">
-              Collaboratively developed by NKTech Cloud Systems & Bizwoke Nova Analytics.
-            </p>
-          </div>
         </div>
 
         {/* Bottom bar */}
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400 text-center sm:text-left">
-            © {new Date().getFullYear()} Nexora ERP. Powered by NKTech & Bizwoke Nova. All rights reserved.
+            © {new Date().getFullYear()} Bizwoke ERP. All rights reserved.
           </div>
 
           {/* Social Icons */}

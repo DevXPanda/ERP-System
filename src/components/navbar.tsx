@@ -9,14 +9,9 @@ interface NavbarProps {
   onToggleTheme: () => void;
 }
 
-const NexoraLogo = () => (
+const BizwokeLogo = () => (
   <div className="flex items-center gap-2">
-    <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-black text-lg tracking-wider select-none shadow-sm shadow-blue-500/20">
-      N
-    </div>
-    <span className="font-bold text-slate-900 dark:text-white text-lg tracking-tight">
-      Nexora ERP
-    </span>
+    <img src="/Bizwoke.jpg" alt="Bizwoke Logo" className="h-8 object-contain rounded-lg" />
   </div>
 );
 
@@ -36,7 +31,7 @@ export default function Navbar({ isDark, onToggleTheme }: NavbarProps) {
         {/* Left Brand Logo */}
         <div className="flex items-center">
           <a href="#home" className="flex items-center select-none">
-            <NexoraLogo />
+            <BizwokeLogo />
           </a>
         </div>
 

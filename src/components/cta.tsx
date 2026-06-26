@@ -17,7 +17,7 @@ export default function CTA() {
 
             {/* Description */}
             <p className="text-slate-500 dark:text-slate-400 text-sm mt-3 leading-relaxed max-w-2xl font-medium">
-              Join thousands of teams using Nexora ERP to run their operations.
+              Join thousands of teams using Bizwoke ERP to run their operations.
             </p>
 
             {/* Buttons */}

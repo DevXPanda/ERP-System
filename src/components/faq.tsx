@@ -17,7 +17,7 @@ export default function FAQ() {
     },
     {
       q: "Do you support multiple offices?",
-      a: "Yes, Nexora ERP allows you to configure multiple office locations, geofences, and customized local holiday calendars.",
+      a: "Yes, Bizwoke ERP allows you to configure multiple office locations, geofences, and customized local holiday calendars.",
     },
   ];
 

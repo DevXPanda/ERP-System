@@ -223,6 +223,7 @@ export const getAllSalarySummaries = query({
       return {
         employeeId: emp._id,
         empCode: emp.employeeId,
+        userId: emp.userId,
         name: user?.name ?? "Unknown",
         designation: emp.designation,
         status: emp.status,

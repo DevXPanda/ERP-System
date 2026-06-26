@@ -740,7 +740,7 @@ export const seedMockHRData = mutation({
     const existingNotices = await ctx.db.query("notices").collect();
     if (existingNotices.length === 0) {
       await ctx.db.insert("notices", {
-        title: "Welcome to Nexora ERP!",
+        title: "Welcome to Bizwoke ERP!",
         content: "We have updated the portal with a unified SaaS human resources system. Employees can track checkins and request leaves directly from their sidebar portal.",
         publishedAt: Date.now() - 3600000 * 12,
       });

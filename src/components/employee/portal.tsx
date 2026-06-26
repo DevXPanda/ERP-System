@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { z } from "zod";
+import { PayslipModal } from "./payslip-modal";
 
 
 
@@ -56,6 +57,7 @@ interface DocumentRecord {
 }
 
 interface PayrollRecord {
+  _id: string;
   month: string;
   baseSalary: number;
   allowances: number;
@@ -96,7 +98,7 @@ export function EmployeePortal({ activeTab = "overview" }: { activeTab?: string 
     localDate: new Date().toLocaleDateString("en-CA"), // YYYY-MM-DD in browser's timezone
   });
   const managerProfile = useQuery(api.employee.getMyProfile);
-  const payrollRecords = useQuery(api.employee.getPayrollRecords);
+  const payrollRecords = useQuery(api.employee.getPayrollRecords, {});
   const documents = useQuery(api.employee.getDocuments);
   const leaveHistory = useQuery(api.employee.getLeaveHistory);
   const performanceReviews = useQuery(api.employee.getPerformanceReviews);
@@ -108,6 +110,7 @@ export function EmployeePortal({ activeTab = "overview" }: { activeTab?: string 
   const applyLeaveMutation = useMutation(api.employee.applyLeave);
   const updateTaskStatus = useMutation(api.employee.updateTaskStatus);
   const submitSupportQuery = useMutation(api.users.submitSupportQuery);
+  const seedDemoSalary = useMutation(api.employee.seedCurrentEmployeeDemoSalary);
 
   // UI state
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7)); // YYYY-MM
@@ -123,6 +126,9 @@ export function EmployeePortal({ activeTab = "overview" }: { activeTab?: string 
     seconds: number;
     isExpired: boolean;
   } | null>(null);
+
+  const [selectedPayrollId, setSelectedPayrollId] = useState<string | null>(null);
+  const [seeding, setSeeding] = useState(false);
 
   useEffect(() => {
     const deactTime = portalData?.deactivationTime;
@@ -1160,14 +1166,40 @@ export function EmployeePortal({ activeTab = "overview" }: { activeTab?: string 
                     <th className="px-4 py-2.5">Deductions</th>
                     <th className="px-4 py-2.5">Net Disbursed</th>
                     <th className="px-4 py-2.5">Payment Date</th>
-                    <th className="px-4 py-2.5 rounded-r-lg">Status</th>
+                    <th className="px-4 py-2.5">Status</th>
+                    <th className="px-4 py-2.5 rounded-r-lg text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-850">
                   {!payrollRecords || payrollRecords.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
-                        No payroll disbursements recorded. Seed mock data to view.
+                      <td colSpan={8} className="px-4 py-12 text-center">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <p className="text-slate-400 font-medium">No payroll disbursements recorded. Seed demo data to test.</p>
+                          <button
+                            disabled={seeding}
+                            onClick={async () => {
+                              setSeeding(true);
+                              try {
+                                await seedDemoSalary();
+                              } catch (err) {
+                                console.error("Failed to seed demo salary:", err);
+                              } finally {
+                                setSeeding(false);
+                              }
+                            }}
+                            className="mt-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer inline-flex items-center gap-2"
+                          >
+                            {seeding ? (
+                              <>
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                                Seeding...
+                              </>
+                            ) : (
+                              "Seed Demo Salary Slip"
+                            )}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ) : (
@@ -1183,6 +1215,14 @@ export function EmployeePortal({ activeTab = "overview" }: { activeTab?: string 
                           <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40">
                             {p.status}
                           </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={() => setSelectedPayrollId(p._id)}
+                            className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-650 dark:bg-indigo-950/40 dark:text-indigo-400 rounded-lg text-[10px] font-bold transition-colors cursor-pointer animate-none"
+                          >
+                            View Slip
+                          </button>
                         </td>
                       </tr>
                     ))
@@ -1555,6 +1595,13 @@ export function EmployeePortal({ activeTab = "overview" }: { activeTab?: string 
           </div>
         )}
       </AnimatePresence>
+
+      {selectedPayrollId && (
+        <PayslipModal
+          payrollId={selectedPayrollId}
+          onClose={() => setSelectedPayrollId(null)}
+        />
+      )}
     </div>
   );
 }

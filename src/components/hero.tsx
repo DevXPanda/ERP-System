@@ -93,7 +93,7 @@ export default function Hero() {
               <div className="w-3 h-3 rounded-full bg-slate-300 dark:bg-white/15"></div>
             </div>
             <div className="text-xs text-slate-400 dark:text-slate-500 font-medium tracking-wide">
-              nexora.app/dashboard
+              bizwoke.app/dashboard
             </div>
             <div className="w-12"></div>
           </div>

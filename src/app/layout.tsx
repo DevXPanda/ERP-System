@@ -10,8 +10,11 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Nexora ERP - Enterprise Portal",
+  title: "Bizwoke ERP - Enterprise Portal",
   description: "Enterprise ERP Management System for Admin, HR, and Employees.",
+  icons: {
+    icon: "/Bizwoke.jpg",
+  },
 };
 
 export default function RootLayout({
@@ -20,7 +23,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ConvexAuthNextjsServerProvider storageNamespace="nexora-erp-auth">
+    <ConvexAuthNextjsServerProvider storageNamespace="bizwoke-erp-auth">
       <html lang="en">
         <body
           className={`${inter.variable} font-sans antialiased bg-slate-50 text-slate-900 transition-colors duration-200`}

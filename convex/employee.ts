@@ -1,6 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
-import { Id } from "./_generated/dataModel";
+import { Id, Doc } from "./_generated/dataModel";
 import { auth } from "./auth";
 import {
   daysInMonth,
@@ -529,7 +529,7 @@ export const checkOut = mutation({
 
     // Use client-supplied local time
     const timeStr = args.localTime;
-    const patchData: any = {
+    const patchData: Partial<Doc<"attendance">> = {
       checkOut: timeStr,
     };
     if (!isWFH && args.lat !== undefined && args.lng !== undefined) {
@@ -621,16 +621,126 @@ export const getDocuments = query({
 });
 
 // ── PAYROLL ──────────────────────────────────────────────────────────
+// ── PAYROLL ──────────────────────────────────────────────────────────
 export const getPayrollRecords = query({
-  args: {},
-  handler: async (ctx) => {
-    const userId = await auth.getUserId(ctx);
-    if (!userId) return [];
+  args: {
+    userId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const callerId = await auth.getUserId(ctx);
+    if (!callerId) return [];
+
+    const caller = await ctx.db.get(callerId);
+    if (!caller) return [];
+
+    let targetUserId = callerId;
+    if (args.userId) {
+      if (caller.role !== "admin" && caller.role !== "hr") {
+        throw new Error("Unauthorized: Only Admin or HR can view other employee payroll records");
+      }
+      targetUserId = args.userId as Id<"users">;
+    }
 
     return await ctx.db
       .query("payroll")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .withIndex("by_user", (q) => q.eq("userId", targetUserId))
       .collect();
+  },
+});
+
+export const getPayslipDetails = query({
+  args: {
+    payrollId: v.id("payroll"),
+  },
+  handler: async (ctx, args) => {
+    const callerId = await auth.getUserId(ctx);
+    if (!callerId) throw new Error("Unauthorized");
+
+    const caller = await ctx.db.get(callerId);
+    if (!caller) throw new Error("Caller record not found");
+
+    const payroll = await ctx.db.get(args.payrollId);
+    if (!payroll) throw new Error("Payroll record not found");
+
+    // RBAC check: Only the employee themselves, or Admin/HR can view this payslip
+    if (caller.role !== "admin" && caller.role !== "hr" && payroll.userId !== callerId) {
+      throw new Error("Forbidden: You do not have permission to view this payslip");
+    }
+
+    const targetUser = await ctx.db.get(payroll.userId as Id<"users">);
+    if (!targetUser) throw new Error("User record not found");
+
+    const employee = await ctx.db
+      .query("employees")
+      .withIndex("userId", (q) => q.eq("userId", payroll.userId))
+      .first();
+
+    const salary = employee
+      ? await ctx.db
+          .query("salary")
+          .withIndex("by_employee", (q) => q.eq("employeeId", employee._id))
+          .first()
+      : null;
+
+    let departmentName = "Unassigned";
+    if (targetUser.departmentId) {
+      const dept = await ctx.db.get(targetUser.departmentId as Id<"departments">);
+      if (dept) {
+        departmentName = dept.name;
+      }
+    }
+
+    // Dynamic Attendance Summary for the payroll month (e.g. "May 2026")
+    const [monthName, yearStr] = payroll.month.split(" ");
+    const monthMap: Record<string, string> = {
+      January: "01", February: "02", March: "03", April: "04", May: "05", June: "06",
+      July: "07", August: "08", September: "09", October: "10", November: "11", December: "12"
+    };
+    const monthNum = monthMap[monthName] || "01";
+    const monthPrefix = `${yearStr}-${monthNum}`;
+
+    const attendance = await ctx.db
+      .query("attendance")
+      .withIndex("by_user", (q) => q.eq("userId", payroll.userId))
+      .collect();
+
+    const monthAttendance = attendance.filter((a) => a.date.startsWith(monthPrefix));
+
+    const totalWorkingDays = monthAttendance.length || 26; // Default to 26 if no attendance records
+    const daysPresent = monthAttendance.filter((a) => a.status === "present" || a.status === "late").length || totalWorkingDays;
+    const unpaidLeaves = monthAttendance.filter((a) => a.status === "absent").length;
+    
+    const leaves = await ctx.db
+      .query("leaves")
+      .withIndex("by_user", (q) => q.eq("userId", payroll.userId))
+      .collect();
+
+    const approvedLeavesCount = leaves.filter((l) => 
+      l.status === "Approved" && l.startDate.startsWith(monthPrefix)
+    ).reduce((acc, l) => {
+      const start = new Date(l.startDate).getDate();
+      const end = new Date(l.endDate).getDate();
+      return acc + Math.max(1, end - start + 1);
+    }, 0);
+
+    return {
+      payroll,
+      user: {
+        name: targetUser.name,
+        email: targetUser.email,
+        phone: targetUser.phone,
+      },
+      employee,
+      salary,
+      departmentName,
+      attendanceSummary: {
+        totalWorkingDays,
+        daysPresent,
+        paidLeave: approvedLeavesCount,
+        unpaidLeave: unpaidLeaves,
+        weekOff: 4, // standard 4 week offs
+      }
+    };
   },
 });
 
@@ -832,3 +942,86 @@ export const seedMockEmployeeData = mutation({
     return { message: "Mock employee workspace seeded successfully." };
   },
 });
+
+export const seedCurrentEmployeeDemoSalary = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await auth.getUserId(ctx);
+    if (!userId) throw new Error("Unauthorized");
+
+    const employee = await ctx.db
+      .query("employees")
+      .withIndex("userId", (q) => q.eq("userId", userId))
+      .first();
+
+    if (!employee) {
+      throw new Error("Employee profile not found. Please ensure the employee profile is seeded first.");
+    }
+
+    // Get or create salary structure
+    let salary = await ctx.db
+      .query("salary")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .first();
+
+    if (!salary) {
+      const salaryId = await ctx.db.insert("salary", {
+        employeeId: employee._id,
+        userId: userId,
+        monthlyCTC: 15000,
+        basicSalary: 14999.99,
+        hra: 0,
+        allowances: 0,
+        perksAndBenefits: 0,
+        bonus: 0,
+        deductions: 0,
+        pf: 0,
+        esi: 0,
+        tds: 0,
+        effectiveDate: "2026-05-01",
+        salaryStatus: "Active",
+        paymentCycle: "Monthly",
+        revisionHistory: [],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+      salary = await ctx.db.get(salaryId);
+    }
+
+    if (!salary) throw new Error("Failed to retrieve or create salary structure");
+
+    // Insert dummy payroll record for "May 2026"
+    const existing = await ctx.db
+      .query("payroll")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .filter((q) => q.eq(q.field("month"), "May 2026"))
+      .first();
+
+    if (!existing) {
+      await ctx.db.insert("payroll", {
+        userId,
+        month: "May 2026",
+        baseSalary: salary.basicSalary,
+        allowances: salary.allowances ?? 0,
+        deductions: (salary.pf ?? 0) + (salary.esi ?? 0) + (salary.tds ?? 0) + (salary.deductions ?? 0),
+        netSalary: Math.round(
+          (salary.basicSalary +
+            (salary.hra ?? 0) +
+            (salary.allowances ?? 0) +
+            (salary.perksAndBenefits ?? 0) +
+            (salary.bonus ?? 0) -
+            (salary.pf ?? 0) -
+            (salary.esi ?? 0) -
+            (salary.tds ?? 0) -
+            (salary.deductions ?? 0)) *
+            100
+        ) / 100,
+        status: "Paid",
+        paymentDate: new Date("2026-06-01").getTime(),
+      });
+    }
+
+    return { message: "Demo salary slip for May 2026 seeded successfully." };
+  },
+});
+

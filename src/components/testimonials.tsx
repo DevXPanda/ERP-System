@@ -5,7 +5,7 @@ import React from "react";
 export default function Testimonials() {
   const reviews = [
     {
-      quote: "Nexora replaced three different tools we used to manage our team. Setup took an afternoon.",
+      quote: "Bizwoke replaced three different tools we used to manage our team. Setup took an afternoon.",
       author: "Priya S.",
       role: "HR Lead",
       company: "Orbital Labs",
