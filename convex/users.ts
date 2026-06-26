@@ -3,6 +3,20 @@ import { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { auth } from "./auth";
 
+export function getDeactivationTime(adminReviewedAt: number, noticePeriod: string | undefined): number {
+  if (!noticePeriod || noticePeriod.toLowerCase().includes("immediate")) {
+    // 24 hours
+    return adminReviewedAt + 24 * 60 * 60 * 1000;
+  }
+  const match = noticePeriod.match(/(\d+)\s*Day/i);
+  if (match) {
+    const days = parseInt(match[1], 10);
+    return adminReviewedAt + days * 24 * 60 * 60 * 1000;
+  }
+  // Default to 24 hours if we cannot parse it
+  return adminReviewedAt + 24 * 60 * 60 * 1000;
+}
+
 // Get current logged-in user
 export const current = query({
   args: {},
@@ -11,7 +25,94 @@ export const current = query({
     if (userId === null) {
       return null;
     }
-    return await ctx.db.get(userId);
+    const user = await ctx.db.get(userId);
+    if (!user) {
+      return null;
+    }
+
+    const employee = await ctx.db
+      .query("employees")
+      .withIndex("userId", (q) => q.eq("userId", userId))
+      .first();
+
+    let isDeactivated = false;
+    let deactivationTime: number | undefined = undefined;
+
+    if (employee && employee.status === "Inactive") {
+      isDeactivated = true;
+    }
+
+    // Always check approved resignation query for deactivation timestamp, even for HR/Admin users who do not have an employee profile record
+    const resignation = await ctx.db
+      .query("queries")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .filter((q) =>
+        q.and(
+          q.eq(q.field("type"), "Resignation"),
+          q.eq(q.field("status"), "Approved by Admin")
+        )
+      )
+      .first();
+
+    if (resignation && resignation.adminReviewedAt) {
+      deactivationTime = getDeactivationTime(
+        resignation.adminReviewedAt,
+        resignation.noticePeriod
+      );
+      if (Date.now() >= deactivationTime) {
+        isDeactivated = true;
+      }
+    }
+
+    return {
+      ...user,
+      isDeactivated,
+      deactivationTime,
+    };
+  },
+});
+
+export const deactivateSelf = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await auth.getUserId(ctx);
+    if (!userId) throw new Error("Unauthorized");
+
+    const employee = await ctx.db
+      .query("employees")
+      .withIndex("userId", (q) => q.eq("userId", userId))
+      .first();
+
+    if (employee && employee.status === "Active") {
+      const resignation = await ctx.db
+        .query("queries")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .filter((q) =>
+          q.and(
+            q.eq(q.field("type"), "Resignation"),
+            q.eq(q.field("status"), "Approved by Admin")
+          )
+        )
+        .first();
+
+      if (resignation && resignation.adminReviewedAt) {
+        const deactivationTime = getDeactivationTime(
+          resignation.adminReviewedAt,
+          resignation.noticePeriod
+        );
+        if (Date.now() >= deactivationTime) {
+          await ctx.db.patch(employee._id, { status: "Inactive" });
+          
+          // Log deactivation
+          await ctx.db.insert("logs", {
+            userId,
+            action: "Account Deactivated",
+            timestamp: Date.now(),
+            details: `Employee account auto-deactivated after notice period completion.`,
+          });
+        }
+      }
+    }
   },
 });
 
@@ -171,6 +272,7 @@ export const createEmployee = mutation({
     joiningDate: v.string(),
     probationEndDate: v.optional(v.string()),
     officeLocation: v.string(),
+    officeId: v.optional(v.string()),
     shift: v.string(),
     salary: v.optional(v.number()), // Admin only
     username: v.string(),
@@ -276,6 +378,7 @@ export const createEmployee = mutation({
       joiningDate: args.joiningDate,
       probationEndDate: args.probationEndDate,
       officeLocation: args.officeLocation,
+      officeId: args.officeId,
       shift: args.shift,
       salary: args.salary, // Saved only if creator is Admin
       username: args.username,
@@ -386,6 +489,300 @@ export const fixAdminPassword = mutation({
     };
   },
 });
+
+// ── NOTIFICATIONS AND RESIGNATION ────────────────────────────────────
+export const getNotifications = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await auth.getUserId(ctx);
+    if (!userId) return [];
+    return await ctx.db
+      .query("notifications")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .order("desc")
+      .collect();
+  },
+});
+
+export const markAllNotificationsAsRead = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await auth.getUserId(ctx);
+    if (!userId) return;
+    const unread = await ctx.db
+      .query("notifications")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .filter((q) => q.eq(q.field("read"), false))
+      .collect();
+    for (const notif of unread) {
+      await ctx.db.patch(notif._id, { read: true });
+    }
+  },
+});
+
+export const submitResignation = mutation({
+  args: {
+    position: v.string(),
+    resignationDate: v.string(), // YYYY-MM-DD
+    reason: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await auth.getUserId(ctx);
+    if (!userId) throw new Error("Unauthorized");
+
+    const currentUser = await ctx.db.get(userId);
+    if (!currentUser) throw new Error("User record not found");
+
+    // Fetch all admins
+    const admins = await ctx.db
+      .query("users")
+      .filter((q) => q.eq(q.field("role"), "admin"))
+      .collect();
+
+    // Fetch all HRs
+    const hrs = await ctx.db
+      .query("users")
+      .filter((q) => q.eq(q.field("role"), "hr"))
+      .collect();
+
+    const dateStr = args.resignationDate;
+
+    // Admin receives all notifications. HR receives employee notifications only.
+    const targets = currentUser.role === "hr" ? admins : [...admins, ...hrs];
+
+    for (const target of targets) {
+      await ctx.db.insert("notifications", {
+        userId: target._id,
+        title: `Resignation Submitted - ${currentUser.name}`,
+        content: `${currentUser.name} (${args.position}) has submitted resignation effective ${dateStr}. Reason: ${args.reason}`,
+        read: false,
+        timestamp: Date.now(),
+      });
+    }
+
+    // Insert into queries table
+    await ctx.db.insert("queries", {
+      userId,
+      name: currentUser.name || "Unknown",
+      email: currentUser.email || "",
+      type: "Resignation",
+      subject: `Resignation Submission - ${args.position}`,
+      description: args.reason,
+      status: currentUser.role === "hr" ? "Pending Admin Review" : "Pending HR Review",
+      createdAt: Date.now(),
+      resignationDate: args.resignationDate,
+      position: args.position,
+    });
+
+    // Add a system log
+    await ctx.db.insert("logs", {
+      userId,
+      action: "Resignation Submitted",
+      timestamp: Date.now(),
+      details: `${currentUser.name} (${args.position}) submitted resignation effective ${dateStr}. Reason: ${args.reason}`,
+    });
+
+    return { message: "Resignation submitted successfully." };
+  },
+});
+
+export const submitSupportQuery = mutation({
+  args: {
+    category: v.string(),
+    subject: v.string(),
+    description: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await auth.getUserId(ctx);
+    if (!userId) throw new Error("Unauthorized");
+
+    const currentUser = await ctx.db.get(userId);
+    if (!currentUser) throw new Error("User record not found");
+
+    // Insert into queries table
+    await ctx.db.insert("queries", {
+      userId,
+      name: currentUser.name || "Unknown",
+      email: currentUser.email || "",
+      type: "Support",
+      subject: `[${args.category}] ${args.subject}`,
+      description: args.description,
+      status: currentUser.role === "hr" ? "Pending Admin Review" : "Pending HR Review",
+      createdAt: Date.now(),
+    });
+
+    // Notify admins & HRs
+    const admins = await ctx.db
+      .query("users")
+      .filter((q) => q.eq(q.field("role"), "admin"))
+      .collect();
+
+    const hrs = await ctx.db
+      .query("users")
+      .filter((q) => q.eq(q.field("role"), "hr"))
+      .collect();
+
+    const targets = currentUser.role === "hr" ? admins : [...admins, ...hrs];
+
+    for (const target of targets) {
+      await ctx.db.insert("notifications", {
+        userId: target._id,
+        title: `New Support Query - ${currentUser.name}`,
+        content: `${currentUser.name} submitted support query: ${args.subject}`,
+        read: false,
+        timestamp: Date.now(),
+      });
+    }
+
+    // Add system log
+    await ctx.db.insert("logs", {
+      userId,
+      action: "Support Query Submitted",
+      timestamp: Date.now(),
+      details: `${currentUser.name} submitted support query: ${args.subject}`,
+    });
+
+    return { message: "Support ticket registered successfully." };
+  },
+});
+
+export const listQueries = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await auth.getUserId(ctx);
+    if (!userId) throw new Error("Unauthorized");
+
+    const currentUser = await ctx.db.get(userId);
+    if (!currentUser || (currentUser.role !== "admin" && currentUser.role !== "hr")) {
+      throw new Error("Unauthorized access to employee queries");
+    }
+
+    return await ctx.db.query("queries").order("desc").collect();
+  },
+});
+
+export const hrReviewQuery = mutation({
+  args: {
+    queryId: v.id("queries"),
+    action: v.string(), // "Approve" | "Reject" | "Proceed"
+    remarks: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await auth.getUserId(ctx);
+    if (!userId) throw new Error("Unauthorized");
+
+    const currentUser = await ctx.db.get(userId);
+    if (!currentUser || currentUser.role !== "hr") {
+      throw new Error("Unauthorized access");
+    }
+
+    let status = "";
+    if (args.action === "Approve") status = "Approved by HR";
+    else if (args.action === "Reject") status = "Rejected by HR";
+    else if (args.action === "Proceed") status = "Pending Admin Review";
+
+    await ctx.db.patch(args.queryId, {
+      status,
+      hrRemarks: args.remarks || undefined,
+      hrReviewedAt: Date.now(),
+      hrReviewedBy: currentUser.name || "HR",
+    });
+
+    // Notify employee of review update
+    const targetQuery = await ctx.db.get(args.queryId);
+    if (targetQuery) {
+      await ctx.db.insert("notifications", {
+        userId: targetQuery.userId,
+        title: `Query Update - ${status}`,
+        content: `Your query "${targetQuery.subject}" status is now "${status}".`,
+        read: false,
+        timestamp: Date.now(),
+      });
+    }
+
+    // Add log
+    await ctx.db.insert("logs", {
+      userId,
+      action: "Query Reviewed by HR",
+      timestamp: Date.now(),
+      details: `HR updated query status to ${status}. Remarks: ${args.remarks || "None"}`,
+    });
+
+    return { message: "Query updated successfully." };
+  },
+});
+
+export const adminReviewQuery = mutation({
+  args: {
+    queryId: v.id("queries"),
+    action: v.string(), // "Approve" | "Reject"
+    remarks: v.string(), // Reason
+    noticePeriod: v.optional(v.string()), // Optional notice period
+  },
+  handler: async (ctx, args) => {
+    const userId = await auth.getUserId(ctx);
+    if (!userId) throw new Error("Unauthorized");
+
+    const currentUser = await ctx.db.get(userId);
+    if (!currentUser || currentUser.role !== "admin") {
+      throw new Error("Unauthorized access");
+    }
+
+    let status = "";
+    if (args.action === "Approve") status = "Approved by Admin";
+    else if (args.action === "Reject") status = "Rejected by Admin";
+
+    await ctx.db.patch(args.queryId, {
+      status,
+      adminRemarks: args.remarks,
+      adminReviewedAt: Date.now(),
+      adminReviewedBy: currentUser.name || "Admin",
+      noticePeriod: args.noticePeriod || undefined,
+    });
+
+    // Notify employee of review update
+    const targetQuery = await ctx.db.get(args.queryId);
+    if (targetQuery) {
+      const noticeText = args.noticePeriod ? ` Notice Period: ${args.noticePeriod}.` : "";
+      await ctx.db.insert("notifications", {
+        userId: targetQuery.userId,
+        title: `Query Update - ${status}`,
+        content: `Your query "${targetQuery.subject}" status is now "${status}". Reason: ${args.remarks}.${noticeText}`,
+        read: false,
+        timestamp: Date.now(),
+      });
+    }
+
+    // Add log
+    const logNoticeText = args.noticePeriod ? `, Notice Period: ${args.noticePeriod}` : "";
+    await ctx.db.insert("logs", {
+      userId,
+      action: "Query Reviewed by Admin",
+      timestamp: Date.now(),
+      details: `Admin updated query status to ${status}. Reason: ${args.remarks}${logNoticeText}`,
+    });
+
+    return { message: "Query updated successfully." };
+  },
+});
+
+export const listMyQueries = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await auth.getUserId(ctx);
+    if (!userId) return [];
+    return await ctx.db
+      .query("queries")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .order("desc")
+      .collect();
+  },
+});
+
+
+
+
+
 
 
 

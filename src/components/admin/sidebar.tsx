@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { Shield, LogOut } from "lucide-react";
 import { NAV_ITEMS, EMPLOYEE_NAV_ITEMS } from "./nav-config";
 import { SidebarNavItem } from "./sidebar-nav-item";
@@ -34,27 +35,26 @@ export function AdminSidebar({
       {/* Brand */}
       <div
         className={`h-16 border-b border-slate-150 dark:border-slate-800 flex items-center shrink-0 ${
-          isCollapsed ? "px-4 justify-center" : "px-5 gap-3"
+          isCollapsed ? "px-4 justify-center" : "px-5 gap-3.5"
         }`}
       >
         <Link
           href="/admin"
           onClick={onNavigate}
-          className="h-8 w-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white shrink-0 hover:bg-indigo-700 transition-colors"
+          className="flex items-center gap-2.5 hover:opacity-90 transition-opacity"
           aria-label="Go to dashboard"
         >
-          <Shield className="h-4 w-4" />
+          <Image
+            src="/Bizwoke.jpg"
+            alt="Bizwoke Logo"
+            width={isCollapsed ? 64 : 192}
+            height={64}
+            priority
+            className={`rounded-lg object-contain border border-slate-200 dark:border-slate-800 shrink-0 bg-white p-0.5 ${
+              isCollapsed ? "h-8 w-8" : "h-8 w-24"
+            }`}
+          />
         </Link>
-
-        {!isCollapsed && (
-          <span className="text-sm font-semibold text-slate-800 dark:text-slate-200 tracking-tight flex-1 truncate">
-            {userRole === "employee"
-              ? "Nexora Employee"
-              : userRole === "hr"
-              ? "Nexora HR"
-              : "Nexora Admin"}
-          </span>
-        )}
 
         {/* Mobile close button slot */}
         {closeButton}

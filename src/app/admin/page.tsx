@@ -69,37 +69,15 @@ export default function AdminDashboard() {
   const recentActivity = useQuery(api.dashboard.getRecentActivity);
   const employees = useQuery(api.dashboard.getEmployeeOverview);
 
-  // Mutations
-  const seedDatabase = useMutation(api.users.seedMockUsers);
-
   // Local UI State
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
-  const [seeding, setSeeding] = useState(false);
-  const [seedMessage, setSeedMessage] = useState("");
   const [activeTooltip, setActiveTooltip] = useState<number | null>(null);
   const [activeBar, setActiveBar] = useState<number | null>(null);
 
   if (currentUser?.role === "hr") {
     return <HRDashboardOverview />;
   }
-
-  const handleSeed = async () => {
-    setSeeding(true);
-    setSeedMessage("");
-    try {
-      const res = await seedDatabase();
-      setSeedMessage(res.message);
-      // Automatically clear message after 4s
-      setTimeout(() => setSeedMessage(""), 4000);
-    } catch (err: unknown) {
-      console.error(err);
-      const errMsg = err instanceof Error ? err.message : String(err);
-      setSeedMessage("Seeding failed: " + errMsg);
-    } finally {
-      setSeeding(false);
-    }
-  };
 
   // Safe checks for data loading (falling back to mocks if database queries are loading)
   const stats = analytics || {
@@ -180,27 +158,7 @@ export default function AdminDashboard() {
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Real-time indicators and secure operations monitoring.</p>
         </div>
 
-        {/* Database Seeder Controls */}
-        <div className="flex items-center gap-3">
-          {seedMessage && (
-            <div className="flex items-center gap-2 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/50 rounded-xl px-4 py-2 text-xs font-medium animate-fade-in">
-              <CheckCircle className="h-4 w-4 shrink-0" />
-              <span>{seedMessage}</span>
-            </div>
-          )}
-          <button
-            onClick={handleSeed}
-            disabled={seeding}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-medium text-xs rounded-xl px-4 py-2.5 disabled:opacity-50 transition-all duration-150 cursor-pointer shadow-xs"
-          >
-            {seeding ? (
-              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Database className="h-3.5 w-3.5" />
-            )}
-            <span>Seed Demo Database</span>
-          </button>
-        </div>
+
       </div>
 
       {/* KPI Cards Grid */}
@@ -667,30 +625,13 @@ function HRDashboardOverview() {
   const payrollAggregate = useQuery(api.salary.getPayrollAggregateForHR);
 
   const approveLeave = useMutation(api.hr.updateLeaveStatus);
-  const seedHR = useMutation(api.hr.seedMockHRData);
   const createNotice = useMutation(api.hr.createAnnouncement);
 
-  const [seeding, setSeeding] = useState(false);
-  const [seedMsg, setSeedMsg] = useState("");
   const [activeTab, setActiveTab] = useState("leaves"); // "leaves" | "recruitment"
   const [isNoticeModalOpen, setIsNoticeModalOpen] = useState(false);
   const [noticeForm, setNoticeForm] = useState({ title: "", content: "" });
   const [publishing, setPublishing] = useState(false);
   const [leaveProcessing, setLeaveProcessing] = useState<string | null>(null);
-
-  const handleSeed = async () => {
-    setSeeding(true);
-    setSeedMsg("");
-    try {
-      const res = await seedHR();
-      setSeedMsg(res.message);
-      setTimeout(() => setSeedMsg(""), 4000);
-    } catch (err) {
-      setSeedMsg("Seeding failed: " + (err instanceof Error ? err.message : String(err)));
-    } finally {
-      setSeeding(false);
-    }
-  };
 
   const handleLeaveAction = async (id: string, status: string) => {
     setLeaveProcessing(id);
@@ -757,23 +698,7 @@ function HRDashboardOverview() {
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Real-time indicators, employee stats, recruitment, and leaves approvals.</p>
         </div>
 
-        {/* Database Seeder Controls */}
-        <div className="flex items-center gap-3">
-          {seedMsg && (
-            <div className="flex items-center gap-2 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/50 rounded-xl px-4 py-2 text-xs font-medium animate-fade-in">
-              <CheckCircle className="h-4 w-4 shrink-0" />
-              <span>{seedMsg}</span>
-            </div>
-          )}
-          <button
-            onClick={handleSeed}
-            disabled={seeding}
-            className="flex items-center gap-2 px-4.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-850 text-white rounded-xl text-xs font-medium shadow-xs hover:shadow-md disabled:opacity-50 transition-all duration-150 cursor-pointer"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${seeding ? "animate-spin" : ""}`} />
-            <span>Seed Mock HR Data</span>
-          </button>
-        </div>
+
       </div>
 
       {/* KPI Cards Grid */}

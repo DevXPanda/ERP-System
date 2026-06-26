@@ -56,6 +56,7 @@ const employeeFormSchema = z.object({
   joiningDate: z.string().min(1, "Joining Date is required"),
   probationEndDate: z.string().optional(),
   officeLocation: z.string().min(2, "Office Location is required"),
+  officeId: z.string().min(1, "Office location selection is required"),
   shift: z.string().min(2, "Shift is required"),
 
   // Step 4: Compensation & Settings
@@ -86,6 +87,7 @@ export default function CreateEmployeePage() {
   const currentUser = useQuery(api.users.current);
   const autoEmployeeId = useQuery(api.users.generateNextEmployeeId);
   const managers = useQuery(api.users.listManagers);
+  const offices = useQuery(api.offices.getOffices);
   const createEmployee = useMutation(api.users.createEmployee);
 
   // Form State
@@ -110,6 +112,7 @@ export default function CreateEmployeePage() {
     joiningDate: new Date().toISOString().split("T")[0],
     probationEndDate: "",
     officeLocation: "",
+    officeId: "",
     shift: "",
     salary: undefined,
     status: "Active",
@@ -186,7 +189,7 @@ export default function CreateEmployeePage() {
     } else if (currentStep === 2) {
       fieldsToValidate = ["name", "personalEmail", "phone", "gender", "dateOfBirth", "address", "emergencyContact"];
     } else if (currentStep === 3) {
-      fieldsToValidate = ["employeeId", "department", "designation", "reportingManagerId", "employmentType", "joiningDate", "probationEndDate", "officeLocation", "shift"];
+      fieldsToValidate = ["employeeId", "department", "designation", "reportingManagerId", "employmentType", "joiningDate", "probationEndDate", "officeLocation", "officeId", "shift"];
     } else if (currentStep === 4) {
       fieldsToValidate = ["salary", "status", "notes"];
     }
@@ -255,6 +258,7 @@ export default function CreateEmployeePage() {
         probationEndDate: form.probationEndDate || undefined,
         reportingManagerId: form.reportingManagerId || undefined,
         notes: form.notes?.trim() || undefined,
+        officeId: form.officeId || undefined,
       });
 
       setStatus({
@@ -880,18 +884,32 @@ export default function CreateEmployeePage() {
 
                   {/* Office Location */}
                   <div className="space-y-1.5">
-                    <label htmlFor="officeLocation" className="text-xs font-semibold text-slate-600 dark:text-slate-400">
+                    <label htmlFor="officeId" className="text-xs font-semibold text-slate-600 dark:text-slate-400">
                       Office Location <span className="text-rose-500">*</span>
                     </label>
-                    <input
-                      id="officeLocation"
-                      name="officeLocation"
-                      value={form.officeLocation}
-                      onChange={handleChange}
-                      placeholder="e.g. New York HQ"
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:border-indigo-500 focus:bg-white dark:focus:bg-slate-900 transition-colors"
-                    />
-                    {errors.officeLocation && <p className="text-[10px] text-rose-500 font-medium">{errors.officeLocation}</p>}
+                    <select
+                      id="officeId"
+                      name="officeId"
+                      value={form.officeId}
+                      onChange={(e) => {
+                        const selectedOfficeId = e.target.value;
+                        const selectedOffice = offices?.find((o: any) => o._id === selectedOfficeId);
+                        setForm((prev) => ({
+                          ...prev,
+                          officeId: selectedOfficeId,
+                          officeLocation: selectedOffice ? selectedOffice.name : "",
+                        }));
+                      }}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:border-indigo-500 focus:bg-white dark:focus:bg-slate-900 transition-colors cursor-pointer text-slate-850 dark:text-slate-200"
+                    >
+                      <option value="">Select Office Location</option>
+                      {offices?.map((o: any) => (
+                        <option key={o._id} value={o._id}>
+                          {o.name} ({o.address.substring(0, 40)}...)
+                        </option>
+                      ))}
+                    </select>
+                    {errors.officeId && <p className="text-[10px] text-rose-500 font-medium">{errors.officeId}</p>}
                   </div>
 
                   {/* Working Shift */}

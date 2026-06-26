@@ -9,6 +9,7 @@ import {
   calcTodayEarnings,
   calcEstimatedMonthSalary,
 } from "./salary";
+import { getDeactivationTime } from "./users";
 
 // HQ coordinates: New York HQ (40.7128, -74.0060)
 const OFFICE_LAT = 40.7128;
@@ -29,14 +30,19 @@ function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2:
 
 // ── GET DASHBOARD DATA ───────────────────────────────────────────────
 export const getDashboardData = query({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    localDate: v.optional(v.string()), // YYYY-MM-DD in user's local timezone
+  },
+  handler: async (ctx, args) => {
     const userId = await auth.getUserId(ctx);
     if (!userId) return null;
 
     // Get user details
     const user = await ctx.db.get(userId);
-    if (!user || user.role !== "employee") return null;
+    if (!user) return null;
+
+    // Use client-provided local date; fall back to UTC only as last resort
+    const todayStr = args.localDate ?? new Date().toISOString().split("T")[0];
 
     // Get employee profile
     const profile = await ctx.db
@@ -44,7 +50,22 @@ export const getDashboardData = query({
       .withIndex("userId", (q) => q.eq("userId", userId))
       .first();
 
-    const todayStr = new Date().toISOString().split("T")[0];
+    const resignation = await ctx.db
+      .query("queries")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .filter((q) =>
+        q.and(
+          q.eq(q.field("type"), "Resignation"),
+          q.eq(q.field("status"), "Approved by Admin")
+        )
+      )
+      .first();
+
+    let deactivationTime: number | undefined = undefined;
+    if (resignation && resignation.adminReviewedAt) {
+      deactivationTime = getDeactivationTime(resignation.adminReviewedAt, resignation.noticePeriod);
+    }
+
 
     // Get today's attendance status
     const todayAttendance = await ctx.db
@@ -167,6 +188,7 @@ export const getDashboardData = query({
       notices: notices.slice(0, 5),
       tasks: tasks.filter((t) => t.status !== "Completed"),
       earnings: earningsData,
+      deactivationTime,
     };
   },
 });
@@ -309,6 +331,9 @@ export const checkIn = mutation({
   args: {
     lat: v.number(),
     lng: v.number(),
+    localTime: v.string(), // HH:MM in user's local timezone
+    localDate: v.string(), // YYYY-MM-DD in user's local timezone
+    workType: v.optional(v.string()), // "WFH" | "WFO"
   },
   handler: async (ctx, args) => {
     const userId = await auth.getUserId(ctx);
@@ -317,13 +342,57 @@ export const checkIn = mutation({
     const user = await ctx.db.get(userId);
     if (!user) throw new Error("User record not found");
 
-    // Calculate distance from NY HQ office geofence
-    const distance = calculateDistanceMeters(args.lat, args.lng, OFFICE_LAT, OFFICE_LNG);
-    if (distance > RADIUS_LIMIT_METERS) {
-      throw new Error(`GPS Validation Failed: You are ${Math.round(distance)}m away. Must be within 200m of the office center.`);
+    const isWFH = args.workType === "WFH";
+
+    // Query employee's office location
+    const profile = await ctx.db
+      .query("employees")
+      .withIndex("userId", (q) => q.eq("userId", userId))
+      .first();
+
+    let office = null;
+    if (profile?.officeId) {
+      office = await ctx.db.get(profile.officeId as Id<"officeLocation">);
     }
 
-    const todayStr = new Date().toISOString().split("T")[0];
+    if (!office) {
+      const offices = await ctx.db.query("officeLocation").collect();
+      office = offices.find((o) => o.name === "NKTech Head Office") || offices[0];
+      if (!office) {
+        // Auto-seed if missing entirely
+        const DEFAULT_OFFICE = {
+          name: "NKTech Head Office",
+          address: "ITHUM Tower, 3rd Floor, Office 307B, A-40, Sector 62, Noida, Uttar Pradesh 201301",
+          latitude: 28.626568,
+          longitude: 77.3723755,
+          radius: 30,
+        };
+        const defaultId = await ctx.db.insert("officeLocation", DEFAULT_OFFICE);
+        office = { _id: defaultId, _creationTime: Date.now(), ...DEFAULT_OFFICE };
+      }
+    }
+
+    let distance: number | undefined;
+
+    if (!isWFH) {
+      distance = calculateDistanceMeters(args.lat, args.lng, office.latitude, office.longitude);
+      if (distance > office.radius) {
+        throw new Error(
+          JSON.stringify({
+            error: "GEOFENCE_BREACH",
+            officeName: office.name,
+            address: office.address,
+            distance: Math.round(distance),
+            radius: office.radius,
+            lat: args.lat,
+            lng: args.lng,
+          })
+        );
+      }
+    }
+
+    // Use client-provided local date to scope today's check-in
+    const todayStr = args.localDate;
 
     // Check if already checked in today
     const existing = await ctx.db
@@ -336,11 +405,12 @@ export const checkIn = mutation({
       throw new Error("You have already checked in for today.");
     }
 
-    const now = new Date();
-    const timeStr = now.toTimeString().split(" ")[0].slice(0, 5); // HH:MM
+    // Use client-supplied local time — server new Date() is UTC and will be wrong
+    const timeStr = args.localTime;
+    const [hours, minutes] = timeStr.split(":").map(Number);
 
-    // Determine status (Late if check-in is after 09:15 AM)
-    const isLate = now.getHours() > 9 || (now.getHours() === 9 && now.getMinutes() > 15);
+    // Determine status (Late if check-in is after 09:15 AM local time)
+    const isLate = hours > 9 || (hours === 9 && minutes > 15);
     const status = isLate ? "late" : "present";
 
     const attendanceId = await ctx.db.insert("attendance", {
@@ -348,15 +418,24 @@ export const checkIn = mutation({
       date: todayStr,
       checkIn: timeStr,
       status,
-      location: `HQ Sector (${Math.round(distance)}m offset)`,
+      location: isWFH
+        ? "Work from Home"
+        : `${office.name} (${Math.round(distance ?? 0)}m offset)`,
+      officeId: office._id,
+      latitude: args.lat,
+      longitude: args.lng,
+      distance: distance !== undefined ? Math.round(distance) : undefined,
+      timestamp: Date.now(),
     });
 
     // ── Audit Log ────────────────────────────────────────────────────
     await ctx.db.insert("logs", {
       userId,
-      action: "GPS Check In",
+      action: isWFH ? "WFH Check In" : "GPS Check In",
       timestamp: Date.now(),
-      details: `${user.name} checked in from verified coordinates (${args.lat}, ${args.lng}). Status: ${status}.`,
+      details: isWFH
+        ? `${user.name} checked in from Home (WFH).`
+        : `${user.name} checked in from verified coordinates (${args.lat.toFixed(4)}, ${args.lng.toFixed(4)}) at office "${office.name}". Status: ${status}, Distance: ${distance !== undefined ? Math.round(distance) : 0}m.`,
     });
 
     return { attendanceId, message: `Checked in successfully as ${status} at ${timeStr}.` };
@@ -364,18 +443,24 @@ export const checkIn = mutation({
 });
 
 export const checkOut = mutation({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    localTime: v.string(), // HH:MM in user's local timezone
+    lat: v.optional(v.number()),
+    lng: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
     const userId = await auth.getUserId(ctx);
     if (!userId) throw new Error("Unauthorized");
 
-    const todayStr = new Date().toISOString().split("T")[0];
+    const user = await ctx.db.get(userId);
+    if (!user) throw new Error("User record not found");
 
-    // Find today's check-in
+    // Find today's active check-in record without checkOut
     const existing = await ctx.db
       .query("attendance")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .filter((q) => q.eq(q.field("date"), todayStr))
+      .filter((q) => q.eq(q.field("checkOut"), undefined))
+      .order("desc")
       .first();
 
     if (!existing) {
@@ -386,19 +471,87 @@ export const checkOut = mutation({
       throw new Error("You have already checked out for today.");
     }
 
-    const now = new Date();
-    const timeStr = now.toTimeString().split(" ")[0].slice(0, 5); // HH:MM
+    const isWFH = existing.location === "Work from Home";
+    let distance: number | undefined;
+    let officeId = existing.officeId;
 
-    await ctx.db.patch(existing._id, {
+    if (!isWFH) {
+      if (args.lat === undefined || args.lng === undefined) {
+        throw new Error("Location coordinates are required for check-out.");
+      }
+
+      let office = null;
+      if (officeId) {
+        office = await ctx.db.get(officeId as Id<"officeLocation">);
+      }
+      if (!office) {
+        // Fallback to employee profile assigned office or default
+        const profile = await ctx.db
+          .query("employees")
+          .withIndex("userId", (q) => q.eq("userId", userId))
+          .first();
+        if (profile?.officeId) {
+          office = await ctx.db.get(profile.officeId as Id<"officeLocation">);
+        }
+        if (!office) {
+          const offices = await ctx.db.query("officeLocation").collect();
+          office = offices.find((o) => o.name === "NKTech Head Office") || offices[0];
+          if (!office) {
+            const DEFAULT_OFFICE = {
+              name: "NKTech Head Office",
+              address: "ITHUM Tower, 3rd Floor, Office 307B, A-40, Sector 62, Noida, Uttar Pradesh 201301",
+              latitude: 28.626568,
+              longitude: 77.3723755,
+              radius: 30,
+            };
+            const defaultId = await ctx.db.insert("officeLocation", DEFAULT_OFFICE);
+            office = { _id: defaultId, _creationTime: Date.now(), ...DEFAULT_OFFICE };
+          }
+        }
+        officeId = office._id;
+      }
+
+      distance = calculateDistanceMeters(args.lat, args.lng, office.latitude, office.longitude);
+      if (distance > office.radius) {
+        throw new Error(
+          JSON.stringify({
+            error: "GEOFENCE_BREACH",
+            officeName: office.name,
+            address: office.address,
+            distance: Math.round(distance),
+            radius: office.radius,
+            lat: args.lat,
+            lng: args.lng,
+          })
+        );
+      }
+    }
+
+    // Use client-supplied local time
+    const timeStr = args.localTime;
+    const patchData: any = {
       checkOut: timeStr,
-    });
+    };
+    if (!isWFH && args.lat !== undefined && args.lng !== undefined) {
+      patchData.checkOutLatitude = args.lat;
+      patchData.checkOutLongitude = args.lng;
+      patchData.checkOutDistance = distance !== undefined ? Math.round(distance) : undefined;
+      patchData.checkOutTimestamp = Date.now();
+      if (!existing.officeId && officeId) {
+        patchData.officeId = officeId;
+      }
+    }
+
+    await ctx.db.patch(existing._id, patchData);
 
     // ── Audit Log ────────────────────────────────────────────────────
     await ctx.db.insert("logs", {
       userId,
-      action: "GPS Check Out",
+      action: isWFH ? "WFH Check Out" : "GPS Check Out",
       timestamp: Date.now(),
-      details: `Checked out at ${timeStr} today.`,
+      details: isWFH
+        ? `${user.name} checked out from Home (WFH).`
+        : `${user.name} checked out from verified coordinates (${args.lat?.toFixed(4) ?? "0.0000"}, ${args.lng?.toFixed(4) ?? "0.0000"}) at ${timeStr}. Distance: ${distance !== undefined ? Math.round(distance) : 0}m.`,
     });
 
     return { message: `Checked out successfully at ${timeStr}.` };

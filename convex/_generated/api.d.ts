@@ -13,6 +13,7 @@ import type * as dashboard from "../dashboard.js";
 import type * as employee from "../employee.js";
 import type * as hr from "../hr.js";
 import type * as http from "../http.js";
+import type * as offices from "../offices.js";
 import type * as salary from "../salary.js";
 import type * as users from "../users.js";
 
@@ -28,6 +29,7 @@ declare const fullApi: ApiFromModules<{
   employee: typeof employee;
   hr: typeof hr;
   http: typeof http;
+  offices: typeof offices;
   salary: typeof salary;
   users: typeof users;
 }>;

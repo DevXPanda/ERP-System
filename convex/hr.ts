@@ -127,16 +127,126 @@ export const getAttendanceRecords = query({
 
     const records = await ctx.db.query("attendance").collect();
     const users = await ctx.db.query("users").collect();
+    const employees = await ctx.db.query("employees").collect();
 
-    // Map user names to attendance records
+    // Map user names, emails, employeeId, and designation to attendance records
     return records.map((r) => {
       const u = users.find((usr) => usr._id === r.userId);
+      const e = employees.find((emp) => emp.userId === r.userId);
       return {
         ...r,
         employeeName: u?.name || "Unnamed Employee",
         employeeEmail: u?.email || "",
+        employeeId: e?.employeeId || "",
+        designation: e?.designation || "",
       };
     }).sort((a, b) => b.date.localeCompare(a.date));
+  },
+});
+
+// ── UPDATE ATTENDANCE RECORD (Admin CRUD) ─────────────────────────────
+export const updateAttendanceRecord = mutation({
+  args: {
+    attendanceId: v.id("attendance"),
+    date: v.optional(v.string()),
+    checkIn: v.optional(v.string()),
+    checkOut: v.optional(v.string()),
+    status: v.optional(v.string()),
+    location: v.optional(v.string()),
+    adminRemarks: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const admin = await validateAdmin(ctx);
+    const record = await ctx.db.get(args.attendanceId);
+    if (!record) throw new Error("Attendance record not found.");
+
+    const { attendanceId, ...fields } = args;
+    const patch: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(fields)) {
+      if (val !== undefined) patch[key] = val;
+    }
+    patch.adminEditedAt = Date.now();
+    patch.adminEditedBy = admin.name || "Admin";
+
+    await ctx.db.patch(attendanceId, patch);
+
+    await ctx.db.insert("logs", {
+      userId: admin._id,
+      action: "Attendance Record Updated",
+      timestamp: Date.now(),
+      details: `${admin.name} edited attendance for date ${record.date}. Remarks: ${args.adminRemarks || "N/A"}.`,
+    });
+
+    return { message: "Attendance record updated successfully." };
+  },
+});
+
+// ── DELETE ATTENDANCE RECORD (Admin CRUD) ─────────────────────────────
+export const deleteAttendanceRecord = mutation({
+  args: {
+    attendanceId: v.id("attendance"),
+  },
+  handler: async (ctx, args) => {
+    const admin = await validateAdmin(ctx);
+    const record = await ctx.db.get(args.attendanceId);
+    if (!record) throw new Error("Attendance record not found.");
+
+    await ctx.db.delete(args.attendanceId);
+
+    await ctx.db.insert("logs", {
+      userId: admin._id,
+      action: "Attendance Record Deleted",
+      timestamp: Date.now(),
+      details: `${admin.name} deleted attendance record for userId ${record.userId} on ${record.date}.`,
+    });
+
+    return { message: "Attendance record deleted." };
+  },
+});
+
+// ── ADD ATTENDANCE RECORD (Admin CRUD) ────────────────────────────────
+export const addAttendanceRecord = mutation({
+  args: {
+    userId: v.string(),
+    date: v.string(),
+    checkIn: v.string(),
+    checkOut: v.optional(v.string()),
+    status: v.string(),
+    location: v.optional(v.string()),
+    adminRemarks: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const admin = await validateAdmin(ctx);
+
+    // Guard against duplicate on same date
+    const existing = await ctx.db
+      .query("attendance")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .filter((q) => q.eq(q.field("date"), args.date))
+      .first();
+
+    if (existing) throw new Error("An attendance record already exists for this employee on this date.");
+
+    await ctx.db.insert("attendance", {
+      userId: args.userId,
+      date: args.date,
+      checkIn: args.checkIn,
+      checkOut: args.checkOut,
+      status: args.status,
+      location: args.location,
+      adminRemarks: args.adminRemarks,
+      adminEditedAt: Date.now(),
+      adminEditedBy: admin.name || "Admin",
+    });
+
+    await ctx.db.insert("logs", {
+      userId: admin._id,
+      action: "Attendance Record Added",
+      timestamp: Date.now(),
+      details: `${admin.name} manually added attendance for userId ${args.userId} on ${args.date}.`,
+    });
+
+    return { message: "Attendance record created successfully." };
   },
 });
 

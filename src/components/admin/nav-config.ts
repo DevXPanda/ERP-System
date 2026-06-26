@@ -74,6 +74,12 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Clock,
   },
   {
+    label: "My Attendance",
+    href: "/admin?tab=attendance",
+    icon: Clock,
+    roles: ["hr"],
+  },
+  {
     label: "Leaves",
     href: "/admin/leaves",
     icon: CalendarOff,
@@ -130,6 +136,11 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Settings,
   },
   {
+    label: "Employee Queries",
+    href: "/admin/queries",
+    icon: HelpCircle,
+  },
+  {
     label: "Activity Logs",
     href: "/admin/activity",
     icon: Activity,
@@ -148,5 +159,5 @@ export const EMPLOYEE_NAV_ITEMS: NavItem[] = [
   { label: "My Tasks", href: "/admin?tab=tasks", icon: CheckSquare },
   { label: "Notices", href: "/admin?tab=notices", icon: Megaphone },
   { label: "Performance", href: "/admin?tab=performance", icon: BarChart3 },
-  { label: "Help & Support", href: "/admin?tab=support", icon: HelpCircle },
+  { label: "Your Queries", href: "/admin?tab=queries", icon: HelpCircle },
 ];

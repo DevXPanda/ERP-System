@@ -20,6 +20,14 @@ export default defineSchema({
     .index("email", ["email"])
     .index("by_token", ["tokenIdentifier"]),
 
+  officeLocation: defineTable({
+    name: v.string(),
+    address: v.string(),
+    latitude: v.number(),
+    longitude: v.number(),
+    radius: v.number(), // configurable radius in meters
+  }),
+
   employees: defineTable({
     userId: v.string(),
     employeeId: v.string(), // e.g. "EMP-2026-0001"
@@ -35,6 +43,7 @@ export default defineSchema({
     joiningDate: v.string(),
     probationEndDate: v.optional(v.string()),
     officeLocation: v.string(),
+    officeId: v.optional(v.string()), // Reference to officeLocation._id
     shift: v.string(),
     salary: v.optional(v.number()), // Admin only
     username: v.string(),
@@ -59,6 +68,21 @@ export default defineSchema({
     checkOut: v.optional(v.string()), // HH:MM
     status: v.string(), // "present" | "absent" | "late"
     location: v.optional(v.string()),
+    adminRemarks: v.optional(v.string()),   // Admin note on this record
+    adminEditedAt: v.optional(v.number()),  // Timestamp of last admin edit
+    adminEditedBy: v.optional(v.string()),  // Name of admin who last edited
+    
+    // GPS Geofencing details
+    officeId: v.optional(v.string()),
+    latitude: v.optional(v.number()),       // check-in latitude
+    longitude: v.optional(v.number()),      // check-in longitude
+    distance: v.optional(v.number()),       // check-in distance from office (meters)
+    timestamp: v.optional(v.number()),      // check-in epoch timestamp
+    
+    checkOutLatitude: v.optional(v.number()),
+    checkOutLongitude: v.optional(v.number()),
+    checkOutDistance: v.optional(v.number()),
+    checkOutTimestamp: v.optional(v.number()),
   })
     .index("by_user", ["userId"])
     .index("by_date", ["date"]),
@@ -176,5 +200,25 @@ export default defineSchema({
     feedback: v.string(),
     reviewPeriod: v.string(),
     reviewedBy: v.string(),
+  }).index("by_user", ["userId"]),
+
+  queries: defineTable({
+    userId: v.string(),
+    name: v.string(),
+    email: v.string(),
+    type: v.string(), // "Resignation" | "Support"
+    subject: v.string(),
+    description: v.string(),
+    status: v.string(), // "Pending HR Review" | "Approved by HR" | "Rejected by HR" | "Pending Admin Review" | "Approved by Admin" | "Rejected by Admin"
+    createdAt: v.number(),
+    resignationDate: v.optional(v.string()),
+    position: v.optional(v.string()),
+    hrRemarks: v.optional(v.string()),
+    adminRemarks: v.optional(v.string()),
+    hrReviewedAt: v.optional(v.number()),
+    adminReviewedAt: v.optional(v.number()),
+    hrReviewedBy: v.optional(v.string()),
+    adminReviewedBy: v.optional(v.string()),
+    noticePeriod: v.optional(v.string()),
   }).index("by_user", ["userId"]),
 });
