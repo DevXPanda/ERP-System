@@ -25,14 +25,14 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
         }
       },
       profile(params) {
-        const profile: any = {
+        const profile: { email: string; name?: string; role?: string } = {
           email: params.email as string,
         };
         if (params.name !== undefined) {
-          profile.name = params.name;
+          profile.name = params.name as string;
         }
         if (params.role !== undefined) {
-          profile.role = params.role;
+          profile.role = params.role as string;
         }
         return profile;
       },
