@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-weight-semibold: 500;
+  --font-weight-bold: 500;
+  --font-weight-extrabold: 600;
+  --font-weight-black: 600;
+  --color-primary-brand: #2563EB;
+  --color-secondary-brand: #7C3AED;
+  --color-accent-brand: #06B6D4;
+  --color-success-brand: #22C55E;
+  --color-background-brand: #030712;
+  --color-card-brand: #111827;
+}
+
+:root {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --border: #e2e8f0;
+}
+
+.dark {
+  --background: #030712;
+  --foreground: #f1f5f9;
+  --card: #111827;
+  --border: rgba(255, 255, 255, 0.08);
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  overflow-x: hidden;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Simplified Cards and Panels (adapt automatically using CSS variables) */
+.glass-card {
+  background-color: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
+}
+
+.glass-panel {
+  background-color: var(--card);
+  border: 1px solid var(--border);
+}
+
+.dark .glass-card {
+  background-color: rgba(17, 24, 39, 0.6);
+  backdrop-filter: blur(20px);
+}
+
+.dark .glass-panel {
+  background-color: rgba(17, 24, 39, 0.4);
+  backdrop-filter: blur(12px);
+}
+
+.gradient-text {
+  background: linear-gradient(to right, #2563EB, #7C3AED);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.dark .gradient-text {
+  background: linear-gradient(to right, #b4c5ff, #eaddff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.workflow-line {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, rgba(37, 99, 235, 0.1) 0%, #2563EB 50%, rgba(37, 99, 235, 0.1) 100%);
+  z-index: -1;
+  transform: translateY(-50%);
+}
+
+.workflow-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #2563EB;
+  box-shadow: 0 0 10px #2563EB;
+}
